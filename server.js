@@ -7,7 +7,8 @@ const app = express()
 app.use(express.json())
 app.use(cors())
 
-//  Rota inicial
+// ROTA INICIAL
+
 app.get('/', (req, res) => {
     res.send(`
         <body>
@@ -18,19 +19,21 @@ app.get('/', (req, res) => {
     `)
 })
 
+// LISTAR LOCAIS
 
-//  LISTAR TODOS OS LOCAIS
 app.get('/locais', async (req, res) => {
     const db = await criarBanco()
+
     const locais = await db.all(`SELECT * FROM locais`)
     res.json(locais)
 })
 
 
-//  BUSCAR UM LOCAL POR ID
+// BUSCAR LOCAL
+
 app.get('/locais/:id', async (req, res) => {
-    const { id } = req.params
     const db = await criarBanco()
+    const { id } = req.params
 
     const local = await db.get(
         `SELECT * FROM locais WHERE id = ?`,
@@ -40,12 +43,11 @@ app.get('/locais/:id', async (req, res) => {
     res.json(local)
 })
 
+// CRIAR LOCAL
 
-//  CRIAR NOVO LOCAL
 app.post('/locais', async (req, res) => {
-    const { nome, endereco, tipo_ajuda, quantidade_necessaria } = req.body
-
     const db = await criarBanco()
+    const { nome, endereco, tipo_ajuda, quantidade_necessaria } = req.body
 
     await db.run(`
         INSERT INTO locais (nome, endereco, tipo_ajuda, quantidade_necessaria)
@@ -55,28 +57,69 @@ app.post('/locais', async (req, res) => {
     res.send(`Local ${nome} criado com sucesso!`)
 })
 
+// VOLUNTARIAR
 
-//  VOLUNTARIAR (AÇÃO PRINCIPAL 🔥)
-app.post('/ajudar/:id', async (req, res) => {
-    const { id } = req.params
+app.post('/voluntariar', async (req, res) => {
     const db = await criarBanco()
+    const { nome, telefone, local_id } = req.body
+
+    if (!nome || !telefone || !local_id) {
+        return res.status(400).send('Preencha todos os campos')
+    }
+
+    const local = await db.get(
+        `SELECT * FROM locais WHERE id = ?`,
+        [local_id]
+    )
+
+    if (!local) {
+        return res.status(404).send('Local não encontrado')
+    }
+
+    if (local.quantidade_atual >= local.quantidade_necessaria) {
+        return res.send('Esse local já está completo!')
+    }
+
+    await db.run(`
+        INSERT INTO voluntarios (nome, telefone, local_id)
+        VALUES (?, ?, ?)
+    `, [nome, telefone, local_id])
 
     await db.run(`
         UPDATE locais
         SET quantidade_atual = quantidade_atual + 1
         WHERE id = ?
-    `, [id])
+    `, [local_id])
 
-    res.send(`Você se voluntariou com sucesso!`)
+    res.send('Voluntário cadastrado com sucesso!')
 })
 
 
-//  ATUALIZAR LOCAL
+// LISTAR VOLUNTÁRIOS
+
+app.get('/voluntarios', async (req, res) => {
+    const db = await criarBanco()
+
+    const voluntarios = await db.all(`
+        SELECT 
+            v.id,
+            v.nome,
+            v.telefone,
+            l.nome AS local_nome
+        FROM voluntarios v
+        JOIN locais l ON v.local_id = l.id
+    `)
+
+    res.json(voluntarios)
+})
+
+
+// ATUALIZAR
+
 app.put('/locais/:id', async (req, res) => {
+    const db = await criarBanco()
     const { id } = req.params
     const { tipo_ajuda, quantidade_necessaria } = req.body
-
-    const db = await criarBanco()
 
     await db.run(`
         UPDATE locais
@@ -84,20 +127,20 @@ app.put('/locais/:id', async (req, res) => {
         WHERE id = ?
     `, [tipo_ajuda, quantidade_necessaria, id])
 
-    res.send(`Local ${id} atualizado com sucesso!`)
+    res.send(`Local ${id} atualizado`)
 })
 
 
-//  DELETAR LOCAL
+// DELETAR
+
 app.delete('/locais/:id', async (req, res) => {
-    const { id } = req.params
     const db = await criarBanco()
+    const { id } = req.params
 
     await db.run(`DELETE FROM locais WHERE id = ?`, [id])
 
-    res.send(`Local ${id} removido com sucesso!`)
+    res.send(`Local ${id} removido`)
 })
-
 
 const PORT = process.env.PORT || 3000
 
